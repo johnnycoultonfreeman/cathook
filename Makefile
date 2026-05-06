@@ -10,13 +10,14 @@ INSTALL_BIN_DIR ?= $(INSTALL_PREFIX)/bin
 INSTALL_IPC_DIR ?= $(INSTALL_PREFIX)/ipc
 CATBOT_IPC_DIR = botpanel/catbot-ipc-server-main
 
-CFLAGS= -shared -fPIC -std=c++23 -g --no-gnu-unique -pthread -I. -Isrc -Isrc/external
-CFLAGS += -DGIT_COMMIT_HASH=\"$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)\"
-CFLAGS += -DGIT_COMMITTER_DATE=\"$(shell git log -1 --format=%cd --date=short 2>/dev/null || date +%Y-%m-%d)\"
+CPPFLAGS += -I. -Isrc -Isrc/external
+CPPFLAGS += -DGIT_COMMIT_HASH=\"$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)\"
+CPPFLAGS += -DGIT_COMMITTER_DATE=\"$(shell git log -1 --format=%cd --date=short 2>/dev/null || date +%Y-%m-%d)\"
+CXXFLAGS ?= -std=c++23 -g --no-gnu-unique -pthread -fPIC
 DEPFLAGS = -MMD -MP
 
 ifeq ($(TEXTMODE),1)
-CFLAGS += -DCATHOOK_TEXTMODE=1
+CPPFLAGS += -DCATHOOK_TEXTMODE=1
 BUILD_MODE = textmode
 BIN_NAME = libcathooktextmode.so
 else
@@ -27,7 +28,8 @@ endif
 BIN = $(OUTPUT_DIR)/$(BIN_NAME)
 OBJ_DIR = obj/$(BUILD_MODE)
 
-LDFLAGS= -Wl,-Bstatic -lGLEW -Wl,-Bdynamic -lGL -lSDL2 -lvulkan libs/funchook/libfunchook.a libs/funchook/libdistorm.a -z execstack -g -pthread
+LDFLAGS += -shared -z execstack -g -pthread
+LDLIBS += -Wl,-Bstatic -lGLEW -Wl,-Bdynamic -lGL -lSDL2 -lvulkan libs/funchook/libfunchook.a libs/funchook/libdistorm.a
 
 OBJ_FILES =  src/cathook.cpp.o # Unity build
 OBJ_FILES += src/core/logger.cpp.o src/core/config/config_store.cpp.o src/core/diagnostics/exception_handler.cpp.o # Core systems
@@ -61,7 +63,7 @@ clean:
 	$(MAKE) -C "$(CATBOT_IPC_DIR)" clean
 
 install: $(BIN) catbot_ipc
-	install -d "$(INSTALL_BIN_DIR)" "$(INSTALL_IPC_DIR)/bin"
+	install -d -m 0755 "$(INSTALL_BIN_DIR)" "$(INSTALL_IPC_DIR)/bin"
 	install -m 0755 "$(BIN)" "$(INSTALL_BIN_DIR)/$(BIN_NAME)"
 	if [ -f "$(OUTPUT_DIR)/libcathooktextmode.so" ]; then install -m 0755 "$(OUTPUT_DIR)/libcathooktextmode.so" "$(INSTALL_BIN_DIR)/libcathook-textmode.so"; fi
 	if [ -f "$(OUTPUT_DIR)/libcathook.so" ]; then install -m 0755 "$(OUTPUT_DIR)/libcathook.so" "$(INSTALL_BIN_DIR)/libcathook.so"; fi
@@ -71,14 +73,14 @@ install: $(BIN) catbot_ipc
 
 $(BIN): $(OBJS) $(BUILD_MAKEFILE)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
 
 $(OBJ_DIR)/%.cpp.o: %.cpp $(BUILD_MAKEFILE)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CFLAGS) $(DEPFLAGS) -c -o $@ $<
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPFLAGS) -c -o $@ $<
 
 $(OBJ_DIR)/%.c.o: %.c $(BUILD_MAKEFILE)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CFLAGS) $(DEPFLAGS) -c -o $@ $<
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPFLAGS) -c -o $@ $<
 
 -include $(DEPS)

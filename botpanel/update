@@ -58,7 +58,7 @@ install_dependencies() {
 }
 
 build_and_install_runtime() {
-    CAT_BUILD_MODE="${CAT_BUILD_MODE:-both}" bash "$repo_root/build.sh" --both
+    run_as_root env CAT_BUILD_MODE="${CAT_BUILD_MODE:-both}" CATHOOK_ROOT="${CATHOOK_ROOT:-/opt/cathook}" bash "$repo_root/build.sh" --both
 }
 
 build_web_panel() {

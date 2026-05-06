@@ -51,12 +51,12 @@ class SimpleAuth
         {
             console.log(`Auth: ${req.ip} by password ${req.body.password}`);
             req.session.auth = 1;
-            res.status(200).end();
+            res.status(200).json({ ok: true });
         }
         else
         {
             console.log(`Auth fail: ${req.ip} by password ${req.body.password}`);
-            res.status(403).end();
+            res.status(403).json({ ok: false, error: 'invalid password' });
         }
     }
     storeAPIKey(path)

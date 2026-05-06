@@ -8,15 +8,30 @@ build_mode="${CAT_BUILD_MODE:-}"
 
 usage() {
     cat <<'EOF'
-Usage: ./build.sh [default|textmode|both|--default|--textmode|--both|--no-install]
+Usage: sudo ./build.sh [default|textmode|both|--default|--textmode|--both|--no-install]
 
 Without a mode argument, builds the default NORMAL/NON-TEXTMODE
 libcathook.so with SDL hooking enabled.
+
+Install mode writes to /opt/cathook by default and MUST RUN AS SUDO.
+Use --no-install for a local user build without sudo.
 
 Environment:
   CAT_BUILD_MODE=default|textmode|both
   CATHOOK_ROOT=/opt/cathook
 EOF
+}
+
+require_root_for_install() {
+    if [ "$install_enabled" = "0" ]; then
+        return
+    fi
+
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "MUST RUN AS SUDO: sudo ./build.sh ${selected_mode:-}" >&2
+        echo "Use ./build.sh --no-install for a local build that does not write to $install_root." >&2
+        exit 1
+    fi
 }
 
 run_as_root() {
@@ -30,6 +45,34 @@ run_as_root() {
     fi
 }
 
+fix_install_permissions() {
+    if [ ! -d "$install_root" ]; then
+        return
+    fi
+
+    run_as_root chmod -R u=rwX,go=rX "$install_root"
+    if [ -d "$install_root/bin" ]; then
+        run_as_root find "$install_root/bin" -type f -exec chmod 0755 {} +
+    fi
+    if [ -d "$install_root/ipc/bin" ]; then
+        run_as_root find "$install_root/ipc/bin" -type f -exec chmod 0755 {} +
+    fi
+}
+
+restore_workspace_permissions() {
+    if [ "$(id -u)" -ne 0 ] || [ -z "${SUDO_UID:-}" ] || [ -z "${SUDO_GID:-}" ]; then
+        return
+    fi
+
+    for path in "$project_root/bin" "$project_root/obj" "$project_root/libs/funchook" "$project_root/botpanel/catbot-ipc-server-main/bin"; do
+        if [ -e "$path" ]; then
+            chown -R "$SUDO_UID:$SUDO_GID" "$path" 2>/dev/null || true
+        fi
+    done
+}
+
+trap restore_workspace_permissions EXIT
+
 copy_assets() {
     local install_assets_dir="$1"
 
@@ -38,7 +81,7 @@ copy_assets() {
         return
     fi
 
-    run_as_root install -d "$install_assets_dir"
+    run_as_root install -d -m 0755 "$install_assets_dir"
     run_as_root cp -a "$asset_source_dir"/. "$install_assets_dir"/
     echo "Installed assets to $install_assets_dir"
 }
@@ -125,7 +168,7 @@ install_outputs() {
     local install_assets_dir="$install_root/assets"
     local install_ipc_dir="$install_root/ipc"
 
-    run_as_root install -d "$install_bin_dir" "$install_ipc_dir/bin"
+    run_as_root install -d -m 0755 "$install_root" "$install_bin_dir" "$install_ipc_dir/bin"
 
     if [ "$mode" = "default" ] || [ "$mode" = "both" ]; then
         run_as_root install -m 0755 "$project_root/bin/libcathook.so" "$install_bin_dir/libcathook.so"
@@ -136,8 +179,9 @@ install_outputs() {
         run_as_root install -m 0755 "$project_root/bin/libcathooktextmode.so" "$install_bin_dir/libcathook-textmode.so"
     fi
 
-    make -C "$project_root/botpanel/catbot-ipc-server-main" REPO_ROOT="$project_root" INSTALL_DIR="$install_ipc_dir" install
+    run_as_root make -C "$project_root/botpanel/catbot-ipc-server-main" REPO_ROOT="$project_root" INSTALL_DIR="$install_ipc_dir" install
     copy_assets "$install_assets_dir"
+    fix_install_permissions
     echo "Installed Cat runtime to $install_root"
 }
 
@@ -178,6 +222,7 @@ selected_mode="$(choose_build_mode)" || {
     exit 1
 }
 
+require_root_for_install
 ensure_funchook
 build_cat "$selected_mode"
 

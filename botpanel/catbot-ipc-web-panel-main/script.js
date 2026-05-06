@@ -330,7 +330,13 @@ $(function() {
                 password: password
             }
         }, (e, r, b) => {
-            console.log(b);
+            if (e || !r || r.statusCode !== 200) {
+                status.error('Login failed');
+                return;
+            }
+
+            status.info('Logged in');
+            refreshComplete();
         });
     });
 	$('#bot-refresh').on('click', refreshComplete);

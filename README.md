@@ -41,16 +41,18 @@ Install dependencies, build Cat, install runtime files, and prepare the bundled 
 Build the normal NON-TEXTMODE library with SDL hooking:
 
 ```sh
-./build.sh
+sudo ./build.sh
 ```
 
 Build an explicit mode:
 
 ```sh
-./build.sh --default
-./build.sh --textmode
-./build.sh --both
+sudo ./build.sh --default
+sudo ./build.sh --textmode
+sudo ./build.sh --both
 ```
+
+For a local build without installing to `/opt/cathook`, use `./build.sh --no-install`.
 
 Attach to a running TF2 process:
 
