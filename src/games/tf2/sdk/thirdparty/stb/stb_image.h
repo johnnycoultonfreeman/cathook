@@ -1,6 +1,6 @@
 /*
 /^-----^\   data: 2026-04-01
-V  o o  V  plik: externalprojects/tf2source/thirdparty/stb/stb_image.h
+V  o o  V  file: src/games/tf2/sdk/thirdparty/stb/stb_image.h
  |  Y  |   autor: pupnoodle
   \ Q /
   / - \
