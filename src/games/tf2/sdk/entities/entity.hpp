@@ -20,6 +20,7 @@ V  o o  V  file: src/games/tf2/sdk/entities/entity.hpp
 
 #include "games/tf2/sdk/interfaces/entity_list.hpp"
 #include "games/tf2/sdk/interfaces/model_info.hpp"
+#include "games/tf2/sdk/netvars.hpp"
 
 // https://github.com/rei-2/Amalgam/blob/c1c6bf64d739538b48a301ddc5e1a988cb9b479c/Amalgam/src/SDK/Definitions/Definitions.h#L1032
 enum class_id {  
@@ -128,6 +129,10 @@ public:
   }
 
   Entity* get_owner_entity(void) {
+    if (entity_list == nullptr) {
+      return nullptr;
+    }
+
     return entity_list->entity_from_handle(this->get_owner_entity_handle());
   }
   
@@ -246,6 +251,17 @@ public:
     auto get_model_fn = (const model_t* (*)(void*))vtable[8];
     return get_model_fn(renderable);
   }
+
+  bool should_draw(void) {
+    void* renderable = this->get_renderable();
+    if (renderable == nullptr) {
+      return false;
+    }
+
+    void** vtable = *(void***)renderable;
+    auto should_draw_fn = (bool (*)(void*))vtable[3];
+    return should_draw_fn(renderable);
+  }
   
   int draw_model(int flags) {
     void* renderable = this->get_renderable();
@@ -254,6 +270,45 @@ public:
     int (*draw_model_fn)(void*, int) = (int (*)(void*, int))vtable[10];
 
     return draw_model_fn(renderable, flags);
+  }
+
+  Entity* first_move_child(void) {
+    static const int move_child_offset = [] {
+      const int moveparent_offset = tf2_netvars::find_offset("DT_BaseEntity", { "moveparent" });
+      return moveparent_offset > 12 ? moveparent_offset - 12 : 0;
+    }();
+    if (move_child_offset == 0 || entity_list == nullptr) {
+      return nullptr;
+    }
+
+    const int handle = *reinterpret_cast<int*>(reinterpret_cast<std::uintptr_t>(this) + move_child_offset);
+    return entity_list->entity_from_handle(handle);
+  }
+
+  Entity* next_move_peer(void) {
+    static const int move_peer_offset = [] {
+      const int moveparent_offset = tf2_netvars::find_offset("DT_BaseEntity", { "moveparent" });
+      return moveparent_offset > 8 ? moveparent_offset - 8 : 0;
+    }();
+    if (move_peer_offset == 0 || entity_list == nullptr) {
+      return nullptr;
+    }
+
+    const int handle = *reinterpret_cast<int*>(reinterpret_cast<std::uintptr_t>(this) + move_peer_offset);
+    return entity_list->entity_from_handle(handle);
+  }
+
+  Entity* move_parent(void) {
+    static const int move_parent_offset = [] {
+      const int moveparent_offset = tf2_netvars::find_offset("DT_BaseEntity", { "moveparent" });
+      return moveparent_offset > 16 ? moveparent_offset - 16 : 0;
+    }();
+    if (move_parent_offset == 0 || entity_list == nullptr) {
+      return nullptr;
+    }
+
+    const int handle = *reinterpret_cast<int*>(reinterpret_cast<std::uintptr_t>(this) + move_parent_offset);
+    return entity_list->entity_from_handle(handle);
   }
   
   bool is_dormant(void) {

@@ -61,6 +61,7 @@ void draw_model_execute_hook(void* me, void* state, ModelRenderInfo* pinfo, VMat
     DME_RETURN;
   }
 
+  player_model_glow::note_rendered_model(entity);
   chams(entity, me, state, pinfo, bone_to_world);
   
   /*

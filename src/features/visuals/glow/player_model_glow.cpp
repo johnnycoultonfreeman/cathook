@@ -12,7 +12,9 @@ V  o o  V  file: src/features/visuals/glow/player_model_glow.cpp
 #include "features/visuals/glow/player_model_glow.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <string_view>
 #include <vector>
 
@@ -33,6 +35,9 @@ namespace
 {
 
 constexpr float glow_fade_distance = 256.0f;
+constexpr int glow_attachment_draw_flags = STUDIO_RENDER | STUDIO_NOSHADOWS;
+constexpr int max_glow_attachment_passes = 32;
+constexpr int max_tracked_glow_attachments = 96;
 constexpr const char* render_buffer_1_name = "RenderBuffer1";
 constexpr const char* render_buffer_2_name = "RenderBuffer2";
 constexpr const char* texture_group_other = "Other textures";
@@ -41,6 +46,18 @@ struct glow_entity
 {
   Player* player = nullptr;
   RGBA_float color{};
+};
+
+struct cached_glow_attachment
+{
+  Player* owner = nullptr;
+  Entity* entity = nullptr;
+};
+
+struct drawn_glow_attachments
+{
+  std::array<Entity*, max_tracked_glow_attachments> entities{};
+  std::size_t count = 0;
 };
 
 struct render_state
@@ -99,6 +116,7 @@ struct scoped_player_invisibility
 };
 
 std::vector<glow_entity> g_entities{};
+std::vector<cached_glow_attachment> g_attachments{};
 Material* g_glow_color_material = nullptr;
 Texture* g_render_buffer_1 = nullptr;
 Texture* g_render_buffer_2 = nullptr;
@@ -650,6 +668,177 @@ void second_end(RenderContext* render_context)
   end_model_glow();
 }
 
+[[nodiscard]] bool is_stored_glow_player(Player* player)
+{
+  return player != nullptr && std::any_of(g_entities.begin(), g_entities.end(), [player](const glow_entity& entity) {
+    return entity.player == player;
+  });
+}
+
+[[nodiscard]] bool is_glow_attachment_candidate(Entity* entity)
+{
+  if (entity == nullptr || entity->get_class_id() == class_id::PLAYER) {
+    return false;
+  }
+  if (entity->is_wearable()) {
+    return true;
+  }
+  if (!entity->is_base_combat_weapon()) {
+    return false;
+  }
+
+  return entity->get_pickup_type() == pickup_type::UNKNOWN;
+}
+
+[[nodiscard]] Player* glow_attachment_owner(Entity* attachment)
+{
+  if (attachment == nullptr) {
+    return nullptr;
+  }
+
+  auto* owner_entity = attachment->get_owner_entity();
+  if (owner_entity == nullptr) {
+    owner_entity = attachment->move_parent();
+  }
+  if (owner_entity == nullptr || owner_entity->get_class_id() != class_id::PLAYER) {
+    return nullptr;
+  }
+
+  return reinterpret_cast<Player*>(owner_entity);
+}
+
+[[nodiscard]] bool is_cached_glow_attachment(Player* owner, Entity* attachment)
+{
+  return std::any_of(g_attachments.begin(), g_attachments.end(), [owner, attachment](const cached_glow_attachment& cached) {
+    return cached.owner == owner && cached.entity == attachment;
+  });
+}
+
+void cache_glow_attachment(Player* owner, Entity* attachment)
+{
+  if (owner == nullptr || attachment == nullptr || is_cached_glow_attachment(owner, attachment)) {
+    return;
+  }
+
+  g_attachments.emplace_back(cached_glow_attachment{.owner = owner, .entity = attachment});
+}
+
+[[nodiscard]] bool was_glow_attachment_drawn(const drawn_glow_attachments& drawn, Entity* attachment)
+{
+  const auto end = drawn.entities.begin() + static_cast<std::ptrdiff_t>(drawn.count);
+  return std::find(drawn.entities.begin(), end, attachment) != end;
+}
+
+void remember_glow_attachment(drawn_glow_attachments& drawn, Entity* attachment)
+{
+  if (attachment == nullptr || drawn.count >= drawn.entities.size()) {
+    return;
+  }
+
+  drawn.entities[drawn.count++] = attachment;
+}
+
+void draw_glow_entity_model(Entity* entity)
+{
+  if (entity != nullptr) {
+    entity->draw_model(glow_attachment_draw_flags);
+  }
+}
+
+void draw_glow_attachment_model(Entity* attachment, drawn_glow_attachments& drawn)
+{
+  if (attachment == nullptr || was_glow_attachment_drawn(drawn, attachment)) {
+    return;
+  }
+
+  draw_glow_entity_model(attachment);
+  remember_glow_attachment(drawn, attachment);
+}
+
+[[nodiscard]] bool should_draw_move_child_attachment(Entity* attachment, Entity* owner_entity)
+{
+  if (attachment == nullptr || owner_entity == nullptr || attachment == owner_entity) {
+    return false;
+  }
+  if (attachment->is_dormant() || !attachment->should_draw() || attachment->get_model() == nullptr) {
+    return false;
+  }
+
+  return true;
+}
+
+[[nodiscard]] bool should_draw_owned_player_attachment(Entity* attachment, Entity* owner_entity)
+{
+  if (!should_draw_move_child_attachment(attachment, owner_entity)) {
+    return false;
+  }
+  if (attachment->get_owner_entity() != owner_entity) {
+    return false;
+  }
+  if (attachment->is_wearable()) {
+    return true;
+  }
+  if (!attachment->is_base_combat_weapon()) {
+    return false;
+  }
+
+  return attachment->get_pickup_type() == pickup_type::UNKNOWN;
+}
+
+[[nodiscard]] bool should_draw_cached_attachment(Entity* attachment, Entity* owner_entity)
+{
+  if (attachment == nullptr || owner_entity == nullptr || attachment == owner_entity) {
+    return false;
+  }
+
+  return !attachment->is_dormant();
+}
+
+void draw_cached_glow_attachments(Player* owner, Entity* owner_entity, drawn_glow_attachments& drawn)
+{
+  if (owner == nullptr || owner_entity == nullptr) {
+    return;
+  }
+
+  for (const auto& attachment : g_attachments) {
+    if (attachment.owner == owner && should_draw_cached_attachment(attachment.entity, owner_entity)) {
+      draw_glow_attachment_model(attachment.entity, drawn);
+    }
+  }
+}
+
+void draw_move_child_attachments(Entity* owner_entity, drawn_glow_attachments& drawn)
+{
+  if (owner_entity == nullptr) {
+    return;
+  }
+
+  auto* attachment = owner_entity->first_move_child();
+  auto passes = 0;
+  while (attachment != nullptr && passes++ < max_glow_attachment_passes) {
+    auto* next_attachment = attachment->next_move_peer();
+    if (should_draw_move_child_attachment(attachment, owner_entity)) {
+      draw_glow_attachment_model(attachment, drawn);
+    }
+    attachment = next_attachment;
+  }
+}
+
+void draw_owned_player_attachments(Entity* owner_entity, drawn_glow_attachments& drawn)
+{
+  if (owner_entity == nullptr || entity_list == nullptr) {
+    return;
+  }
+
+  const auto max_entities = std::max(entity_list->get_max_entities(), 0);
+  for (auto index = 1; index <= max_entities; ++index) {
+    auto* attachment = entity_list->entity_from_index(static_cast<unsigned int>(index));
+    if (should_draw_owned_player_attachment(attachment, owner_entity)) {
+      draw_glow_attachment_model(attachment, drawn);
+    }
+  }
+}
+
 void draw_player_model(Player* player)
 {
   if (player == nullptr) {
@@ -663,7 +852,11 @@ void draw_player_model(Player* player)
 
   const auto invisibility = scoped_player_invisibility(player);
   const auto rendering = scoped_rendering_flag();
-  entity->draw_model(STUDIO_RENDER | STUDIO_NOSHADOWS);
+  auto drawn_attachments = drawn_glow_attachments{};
+  draw_glow_entity_model(entity);
+  draw_move_child_attachments(entity, drawn_attachments);
+  draw_cached_glow_attachments(player, entity, drawn_attachments);
+  draw_owned_player_attachments(entity, drawn_attachments);
 }
 
 } // namespace
@@ -674,6 +867,7 @@ namespace player_model_glow
 void store()
 {
   g_entities.clear();
+  g_attachments.clear();
   if (!config.glow.master || !glow_has_visible_effect() || engine == nullptr || entity_list == nullptr ||
       !engine->is_in_game()) {
     return;
@@ -686,6 +880,9 @@ void store()
 
   if (g_entities.capacity() < 64) {
     g_entities.reserve(64);
+  }
+  if (g_attachments.capacity() < 128) {
+    g_attachments.reserve(128);
   }
 
   const auto max_entities = std::max(entity_list->get_max_entities(), 0);
@@ -704,6 +901,20 @@ void store()
     color.a *= alpha;
     g_entities.emplace_back(glow_entity{.player = player, .color = color});
   }
+}
+
+void note_rendered_model(Entity* entity)
+{
+  if (entity == nullptr || g_rendering || g_entities.empty() || !is_glow_attachment_candidate(entity)) {
+    return;
+  }
+
+  auto* owner = glow_attachment_owner(entity);
+  if (!is_stored_glow_player(owner)) {
+    return;
+  }
+
+  cache_glow_attachment(owner, entity);
 }
 
 void render_first()
@@ -747,6 +958,7 @@ void render_second()
 void shutdown()
 {
   g_entities.clear();
+  g_attachments.clear();
   release_resources();
   g_original_state = render_state{};
   g_last_resource_status = glow_resource_status::ready;

@@ -12,10 +12,13 @@ V  o o  V  file: src/features/visuals/glow/player_model_glow.hpp
 #ifndef PLAYER_MODEL_GLOW_HPP
 #define PLAYER_MODEL_GLOW_HPP
 
+class Entity;
+
 namespace player_model_glow
 {
 
 void store();
+void note_rendered_model(Entity* entity);
 void render_first();
 void render_second();
 void shutdown();
