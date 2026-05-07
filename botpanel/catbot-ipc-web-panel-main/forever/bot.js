@@ -60,7 +60,7 @@ const STATE = {
 
 function makeid(length) {
     var result = '';
-    var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxy!_2$!^%z0123456789';
+    var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     var charactersLength = characters.length;
     for (var i = 0; i < length; i++) {
         result += characters.charAt(Math.floor(Math.random() * charactersLength));
@@ -906,6 +906,7 @@ class Bot extends EventEmitter {
         const source_library = cathook_game_library();
         fs.copyFileSync(source_library, filename);
         fs.chmodSync(filename, 0o755);
+        fs.chownSync(filename, USER.uid, USER.uid);
         self.gamePreloadLibrary = filename;
 
         clearSourceLockFiles();
@@ -1075,6 +1076,17 @@ class Bot extends EventEmitter {
             fs.unlinkSync(preload_library);
             this.log(`Removed temp cathook preload ${preload_library}`);
         } catch (error) {
+            if (error.code === 'EACCES' || error.code === 'EPERM') {
+                try {
+                    fs.chownSync(preload_library, USER.uid, USER.uid);
+                    fs.chmodSync(preload_library, 0o755);
+                    fs.unlinkSync(preload_library);
+                    this.log(`Fixed permissions and removed temp cathook preload ${preload_library}`);
+                    return;
+                } catch (repair_error) {
+                    this.log(`[ERROR] Failed to repair temp cathook preload permissions ${preload_library}: ${repair_error.message}`);
+                }
+            }
             if (error.code !== 'ENOENT')
                 this.log(`[ERROR] Failed to remove temp cathook preload ${preload_library}: ${error.message}`);
         }
