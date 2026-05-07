@@ -8,6 +8,7 @@ const { Tail } = require("tail");
 
 const accounts = require('./acc.js');
 const config = require('./config');
+const steam_id = require('../steam_id');
 
 const CATHOOK_ROOT = process.env.CATHOOK_ROOT || '/opt/cathook';
 const BOT_DISPLAY = process.env.DISPLAY || ':1';
@@ -23,7 +24,7 @@ const CATHOOK_ATTACH_DELAY_SECONDS = Number.parseInt(process.env.CATHOOK_ATTACH_
 
 const LAUNCH_OPTIONS_STEAM = `firejail --dns=1.1.1.1 %NETWORK% --noprofile --private="%HOME%" --name=%JAILNAME% --env=PULSE_SERVER="unix:/tmp/pulse.sock" --env=DISPLAY=%DISPLAY% --env=XAUTHORITY=%XAUTHORITY% --env=LD_PRELOAD=%LD_PRELOAD% %STEAM% ${STEAM_WINDOW_OPTIONS} -login %LOGIN% %PASSWORD%`
 const LAUNCH_OPTIONS_STEAM_RESET = 'firejail --net=none --noprofile --private="%HOME%" %STEAM% --reset'
-const LAUNCH_OPTIONS_GAME = `firejail --join=%JAILNAME% bash -c 'cd "%GAMEPATH%" && %RUNTIME_PREFIX% SteamAppId=440 SteamGameId=440 SteamOverlayGameId=440 SteamEnv=1 CATHOOK_AUTO_ATTACH=1 CATHOOK_ATTACH_DELAY_SECONDS=%CATHOOK_ATTACH_DELAY_SECONDS% CAT_BOT_ID=%BOT_ID% CAT_BOT_NAME=%BOT_NAME% LD_PRELOAD=%LD_PRELOAD% DISPLAY=%DISPLAY% XAUTHORITY="%XAUTHORITY%" PULSE_SERVER="unix:/tmp/pulse.sock" %GAME_BINARY% -steam -game tf ${GAME_RENDER_OPTIONS} ${GAME_WINDOW_OPTIONS} -novid -nojoy -noipx -noshaderapi -nomouse -nomessagebox -nominidumps -nohltv -nobreakpad -reuse -noquicktime -precachefontchars -particles 1 -snoforceformat -softparticlesdefaultoff -textmode -wavonly -forcenovsync -insecure +clientport 27006-27014'`
+const LAUNCH_OPTIONS_GAME = `firejail --join=%JAILNAME% bash -c 'cd "%GAMEPATH%" && %RUNTIME_PREFIX% SteamAppId=440 SteamGameId=440 SteamOverlayGameId=440 SteamEnv=1 CATHOOK_AUTO_ATTACH=1 CATHOOK_ATTACH_DELAY_SECONDS=%CATHOOK_ATTACH_DELAY_SECONDS% CAT_BOT_ID=%BOT_ID% CAT_BOT_NAME=%BOT_NAME% CAT_STEAMID32=%STEAMID32% LD_PRELOAD=%LD_PRELOAD% DISPLAY=%DISPLAY% XAUTHORITY="%XAUTHORITY%" PULSE_SERVER="unix:/tmp/pulse.sock" %GAME_BINARY% -steam -game tf ${GAME_RENDER_OPTIONS} ${GAME_WINDOW_OPTIONS} -novid -nojoy -noipx -noshaderapi -nomouse -nomessagebox -nominidumps -nohltv -nobreakpad -reuse -noquicktime -precachefontchars -particles 1 -snoforceformat -softparticlesdefaultoff -textmode -wavonly -forcenovsync -insecure +clientport 27006-27014'`
 const GAME_LIBRARY_PATH = './bin:./bin/linux64:./tf/bin:./tf/bin/linux64:./platform:./platform/bin:./platform/bin/linux64:.';
 
 // Adjust these values as needed to optimize catbot performance
@@ -460,6 +461,35 @@ class Bot extends EventEmitter {
         ];
     }
 
+    steamid32FromLoginUsers() {
+        if (!this.account || !this.account.login)
+            return null;
+
+        const wanted_login = String(this.account.login).toLowerCase();
+        for (const steam_root of this.steamRootPaths()) {
+            const login_users_path = path.join(steam_root, 'config/loginusers.vdf');
+            let text = '';
+            try {
+                text = fs.readFileSync(login_users_path, 'utf8');
+            } catch (error) {
+                continue;
+            }
+
+            const user_blocks = text.matchAll(/"(\d{17})"\s*\{([\s\S]*?)\n\s*\}/g);
+            for (const match of user_blocks) {
+                const steamid64 = match[1];
+                const block = match[2] || '';
+                const account_name = block.match(/"AccountName"\s+"([^"]+)"/);
+                if (!account_name || account_name[1].toLowerCase() !== wanted_login)
+                    continue;
+
+                return steam_id.steamid64_to_account_id32(steamid64);
+            }
+        }
+
+        return null;
+    }
+
     hostSteamRootPaths() {
         return [
             '/opt/CATHOOK_steam_root',
@@ -835,6 +865,11 @@ class Bot extends EventEmitter {
         }
 
         const game_preload = preload_value(filename);
+        const steamid32 = self.steamid32FromLoginUsers() || '';
+        if (steamid32)
+            self.log(`Resolved SteamID32 ${steamid32} for ${self.account.login}`);
+        else
+            self.log(`SteamID32 for ${self.account.login} is not available from loginusers.vdf yet`);
         self.log(`Launching TF2 from ${game_launch_path} binary=${game_binary} source_library=${source_library} attach_delay_seconds=${CATHOOK_ATTACH_DELAY_SECONDS} preload=${game_preload}`);
         self.procFirejailGame = child_process.spawn(LAUNCH_OPTIONS_GAME.replace("%GAMEPATH%", bash_double_quote_escape(game_launch_path))
             .replace("%RUNTIME_PREFIX%", self.gameRuntimePrefix())
@@ -842,6 +877,7 @@ class Bot extends EventEmitter {
             .replace("%CATHOOK_ATTACH_DELAY_SECONDS%", String(CATHOOK_ATTACH_DELAY_SECONDS))
             .replace("%BOT_ID%", String(self.botid))
             .replace("%BOT_NAME%", self.name)
+            .replace("%STEAMID32%", steamid32)
             // Firejail jail name used by this users steam
             .replace("%JAILNAME%", self.name)
             // cathook

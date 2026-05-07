@@ -23,6 +23,7 @@ V  o o  V  file: src/core/ipc/ipc_client.cpp
 
 #include <algorithm>
 #include <chrono>
+#include <charconv>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
@@ -86,6 +87,23 @@ std::unordered_set<std::uint32_t> local_ipc_friends{};
   if (cached_local_account_id != 0)
   {
     return cached_local_account_id;
+  }
+
+  if (const auto* env_id = std::getenv("CAT_STEAMID32"); env_id != nullptr)
+  {
+    std::uint32_t parsed_id = 0;
+    const auto* end = env_id + std::strlen(env_id);
+    const auto result = std::from_chars(env_id, end, parsed_id);
+    if (result.ec == std::errc{} && result.ptr == end && parsed_id != 0)
+    {
+      cached_local_account_id = parsed_id;
+      return cached_local_account_id;
+    }
+  }
+
+  if (textmode_build())
+  {
+    return 0;
   }
 
   auto* user = steam_runtime::resolve_steam_user();

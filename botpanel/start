@@ -14,9 +14,9 @@ steamapps_upper="/opt/CATHOOK_steamapps_upper"
 steamapps_work="/opt/CATHOOK_steamapps_work"
 steam_root_mount="/opt/CATHOOK_steam_root"
 requested_visible_windows="${CAT_VISIBLE_WINDOWS:-0}"
-if [ "$requested_visible_windows" = "1" ] && [ -n "${DISPLAY:-}" ]; then
+if [ "$requested_visible_windows" = "1" ]; then
     visible_windows=1
-    display="${CAT_DISPLAY:-$DISPLAY}"
+    display="${CAT_DISPLAY:-${DISPLAY:-:0}}"
     use_xpra=0
 else
     visible_windows=0
