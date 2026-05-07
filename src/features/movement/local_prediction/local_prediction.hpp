@@ -1292,13 +1292,19 @@ inline Vec3 local_prediction_projectile_offset_for_weapon(Player* localplayer, W
 
   const bool ducking = localplayer->is_ducking();
   switch (weapon->get_def_id()) {
+  case Soldier_m_TheCowMangler5000:
+  case Soldier_s_TheRighteousBison:
+    return Vec3{23.5f, 8.0f, ducking ? 8.0f : -3.0f};
+  case Engi_m_ThePomson6000:
+    return Vec3{23.5f, 8.0f, (ducking ? 8.0f : -3.0f) - 13.0f};
+  case Pyro_m_DragonsFury:
+    return Vec3{3.0f, 7.0f, -9.0f};
   case Soldier_m_RocketLauncher:
   case Soldier_m_RocketLauncherR:
   case Soldier_m_TheDirectHit:
   case Soldier_m_TheBlackBox:
   case Soldier_m_RocketJumper:
   case Soldier_m_TheLibertyLauncher:
-  case Soldier_m_TheCowMangler5000:
   case Soldier_m_TheOriginal:
   case Soldier_m_FestiveRocketLauncher:
   case Soldier_m_TheBeggarsBazooka:
@@ -1322,11 +1328,7 @@ inline Vec3 local_prediction_projectile_offset_for_weapon(Player* localplayer, W
   case Pyro_s_TheManmelter:
   case Pyro_s_TheScorchShot:
   case Pyro_s_FestiveFlareGun:
-  case Pyro_m_DragonsFury:
-  case Soldier_s_TheRighteousBison:
     return Vec3{23.5f, 12.0f, ducking ? 8.0f : -3.0f};
-  case Engi_m_ThePomson6000:
-    return Vec3{23.5f, 12.0f, (ducking ? 8.0f : -3.0f) - 13.0f};
   case Medic_m_CrusadersCrossbow:
   case Medic_m_FestiveCrusadersCrossbow:
   case Engi_m_TheRescueRanger:
@@ -1438,6 +1440,13 @@ inline LocalPredictionProjectileParameters local_prediction_projectile_parameter
     }
     return speed;
   };
+  const auto attribute_value = [weapon](float base_value, const char* attribute_name) {
+    if (attribute_manager == nullptr) {
+      return base_value;
+    }
+
+    return attribute_manager->attrib_hook_value(base_value, attribute_name, weapon->to_entity());
+  };
 
   switch (weapon->get_def_id()) {
   case Soldier_m_RocketLauncher:
@@ -1467,9 +1476,29 @@ inline LocalPredictionProjectileParameters local_prediction_projectile_parameter
     params.max_time = 2.0f;
     break;
   case Pyro_m_DragonsFury:
-    params.speed = projectile_speed(3000.0f);
+    {
+      static Convar* tf_fireball_speed = nullptr;
+      static Convar* tf_fireball_distance = nullptr;
+      static Convar* tf_fireball_max_lifetime = nullptr;
+      if (convar_system != nullptr) {
+        if (tf_fireball_speed == nullptr) {
+          tf_fireball_speed = convar_system->find_var("tf_fireball_speed");
+        }
+        if (tf_fireball_distance == nullptr) {
+          tf_fireball_distance = convar_system->find_var("tf_fireball_distance");
+        }
+        if (tf_fireball_max_lifetime == nullptr) {
+          tf_fireball_max_lifetime = convar_system->find_var("tf_fireball_max_lifetime");
+        }
+      }
+
+      const float speed = tf_fireball_speed != nullptr ? tf_fireball_speed->get_float() : 3000.0f;
+      const float distance = tf_fireball_distance != nullptr ? tf_fireball_distance->get_float() : 1200.0f;
+      const float max_lifetime = tf_fireball_max_lifetime != nullptr ? tf_fireball_max_lifetime->get_float() : 0.8f;
+      params.speed = projectile_speed(speed);
+      params.max_time = std::min(distance / std::max(params.speed, 1.0f), max_lifetime);
+    }
     params.gravity = 0.0f;
-    params.max_time = 0.8f;
     break;
   case Medic_m_CrusadersCrossbow:
   case Medic_m_FestiveCrusadersCrossbow:
@@ -1513,7 +1542,20 @@ inline LocalPredictionProjectileParameters local_prediction_projectile_parameter
   case Demoman_m_TheIronBomber:
     params.speed = projectile_range_speed(1200.0f);
     params.gravity = gravity_scale * 800.0f;
-    params.max_time = weapon->get_def_id() == Demoman_m_TheIronBomber ? 1.4f : 2.0f;
+    if (weapon->get_def_id() == Demoman_m_TheLooseCannon) {
+      const float mortar_time = attribute_value(0.0f, "grenade_launcher_mortar_mode");
+      if (mortar_time > 0.0f) {
+        const float detonate_time = weapon->get_detonate_time();
+        const float remaining_time = detonate_time > 0.0f && global_vars != nullptr
+          ? detonate_time - global_vars->curtime
+          : mortar_time;
+        params.max_time = std::clamp(remaining_time, static_cast<float>(TICK_INTERVAL), mortar_time);
+      } else {
+        params.max_time = 2.0f;
+      }
+    } else {
+      params.max_time = weapon->get_def_id() == Demoman_m_TheIronBomber ? 1.4f : 2.0f;
+    }
     break;
   case Scout_s_MadMilk:
   case Scout_s_MutatedMilk:
@@ -1711,6 +1753,19 @@ inline Vec3 projectile_sim_hull_for_weapon(Weapon* weapon) {
   }
 
   switch (weapon->get_def_id()) {
+  case Soldier_m_RocketLauncher:
+  case Soldier_m_RocketLauncherR:
+  case Soldier_m_TheDirectHit:
+  case Soldier_m_TheBlackBox:
+  case Soldier_m_RocketJumper:
+  case Soldier_m_TheLibertyLauncher:
+  case Soldier_m_TheCowMangler5000:
+  case Soldier_m_TheOriginal:
+  case Soldier_m_FestiveRocketLauncher:
+  case Soldier_m_TheBeggarsBazooka:
+  case Soldier_m_FestiveBlackBox:
+  case Soldier_m_TheAirStrike:
+    return Vec3{1.0f, 1.0f, 1.0f};
   case Demoman_m_GrenadeLauncher:
   case Demoman_m_GrenadeLauncherR:
   case Demoman_m_TheLochnLoad:
@@ -1722,7 +1777,7 @@ inline Vec3 projectile_sim_hull_for_weapon(Weapon* weapon) {
   case Demoman_s_FestiveStickybombLauncher:
   case Demoman_s_TheScottishResistance:
   case Demoman_s_TheQuickiebombLauncher:
-    return Vec3{2.0f, 2.0f, 2.0f};
+    return Vec3{6.0f, 6.0f, 6.0f};
   case Scout_s_MadMilk:
   case Scout_s_MutatedMilk:
   case Sniper_s_Jarate:
@@ -1762,6 +1817,11 @@ inline projectile_sim_profile projectile_sim_profile_for_weapon(Player* localpla
   profile.params = local_prediction_projectile_parameters_for_weapon(weapon);
   if (profile.params.speed <= 0.0f) {
     return profile;
+  }
+
+  if (localplayer->in_cond(TF_COND_RUNE_PRECISION) &&
+      (projectile_sim_is_rocket_weapon(weapon) || projectile_sim_uses_pipe_fire_setup(weapon))) {
+    profile.params.speed = std::max(profile.params.speed, 3000.0f);
   }
 
   if (projectile_sim_is_rocket_weapon(weapon) && attribute_manager != nullptr) {
@@ -2005,7 +2065,11 @@ inline bool projectile_simulation::step() {
   }
 
   const float dt = std::min(profile.params.time_step, profile.lifetime - time);
-  const Vec3 next_position = position + (velocity * dt);
+  const Vec3 next_position{
+    position.x + (velocity.x * dt),
+    position.y + (velocity.y * dt),
+    position.z + (velocity.z * dt) - (0.5f * profile.params.gravity * dt * dt)
+  };
 
   trace_t trace{};
   const bool hit = profile.collide_world &&

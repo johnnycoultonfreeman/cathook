@@ -548,6 +548,10 @@ inline proj_aim_weapon_profile proj_aim_profile_for_weapon(Weapon* weapon) {
 }
 
 inline bool proj_aim_trace_between(const Vec3& start, const Vec3& end, Entity* skip_entity, Entity* target_entity) {
+  if (engine_trace == nullptr) {
+    return false;
+  }
+
   ray_t ray = engine_trace->init_ray(const_cast<Vec3*>(&start), const_cast<Vec3*>(&end));
   trace_filter filter{};
   engine_trace->init_trace_filter(&filter, skip_entity);
@@ -766,7 +770,7 @@ inline bool proj_aim_trace_path(Player* localplayer,
   Player* target,
   Weapon* weapon,
   const LocalPredictionInterceptResult& intercept) {
-  if (localplayer == nullptr || target == nullptr || weapon == nullptr || !intercept.valid || !intercept.trace.valid) {
+  if (localplayer == nullptr || target == nullptr || weapon == nullptr || engine_trace == nullptr || !intercept.valid || !intercept.trace.valid) {
     return false;
   }
 
@@ -790,6 +794,9 @@ inline bool proj_aim_trace_path(Player* localplayer,
   if (sim_result.hit) {
     return false;
   }
+  if (!sim_result.valid || sim_result.steps.size() < 2) {
+    return false;
+  }
 
   const float hull_radius = proj_aim_hull_radius_for_weapon(weapon);
   const Vec3 inflate{hull_radius, hull_radius, hull_radius};
@@ -799,11 +806,15 @@ inline bool proj_aim_trace_path(Player* localplayer,
   const Vec3 target_mins = target->get_player_mins(target->is_ducking()) + predicted_origin - inflate;
   const Vec3 target_maxs = target->get_player_maxs(target->is_ducking()) + predicted_origin + inflate;
 
-  for (size_t index = 1; index < intercept.trace.steps.size(); ++index) {
-    const Vec3 start = intercept.trace.steps[index - 1].position;
-    const Vec3 end = intercept.trace.steps[index].position;
+  const Vec3 hull_mins = sim_profile.hull * -1.0f;
+  const Vec3 hull_maxs = sim_profile.hull;
+  for (size_t index = 1; index < sim_result.steps.size(); ++index) {
+    const Vec3 start = sim_result.steps[index - 1].position;
+    const Vec3 end = sim_result.steps[index].position;
 
-    ray_t ray = engine_trace->init_ray(const_cast<Vec3*>(&start), const_cast<Vec3*>(&end));
+    ray_t ray = sim_profile.hull_trace
+      ? engine_trace->init_ray(const_cast<Vec3*>(&start), const_cast<Vec3*>(&end), const_cast<Vec3*>(&hull_mins), const_cast<Vec3*>(&hull_maxs))
+      : engine_trace->init_ray(const_cast<Vec3*>(&start), const_cast<Vec3*>(&end));
     trace_filter filter{};
     engine_trace->init_world_trace_filter(&filter);
 
@@ -830,7 +841,7 @@ inline bool proj_aim_trace_splash_path(Player* localplayer,
   Vec3* explosion_origin_out = nullptr,
   const Vec3* predicted_target_origin = nullptr,
   bool validate_damage = true) {
-  if (localplayer == nullptr || target == nullptr || weapon == nullptr || !intercept.valid || !intercept.trace.valid || splash_radius <= 0.0f) {
+  if (localplayer == nullptr || target == nullptr || weapon == nullptr || engine_trace == nullptr || !intercept.valid || !intercept.trace.valid || splash_radius <= 0.0f) {
     return false;
   }
 
@@ -926,28 +937,33 @@ inline std::vector<proj_aim_path_sample> proj_aim_limited_path_samples(const Loc
   return samples;
 }
 
-inline std::vector<Vec3> proj_aim_splash_sample_offsets(const Vec3& local_origin,
+inline void proj_aim_splash_sample_offsets(const Vec3& local_origin,
   const Vec3& target_origin,
   float radius,
   int sample_count,
   bool allow_wall_splash,
-  bool allow_seam_shot) {
+  bool allow_seam_shot,
+  std::vector<Vec3>* offsets) {
+  if (offsets == nullptr) {
+    return;
+  }
+
   const Vec3 to_local = local_prediction_normalize(local_origin - target_origin);
   const float outer = radius * 0.92f;
   const float seam = radius * 0.6f;
   const size_t max_samples = static_cast<size_t>(std::clamp(sample_count, 4, 64));
 
-  std::vector<Vec3> offsets{};
-  offsets.reserve(max_samples + 6);
-  offsets.emplace_back(Vec3{0.0f, 0.0f, -outer});
-  offsets.emplace_back(Vec3{outer * 0.38f, 0.0f, -outer * 0.72f});
-  offsets.emplace_back(Vec3{-outer * 0.38f, 0.0f, -outer * 0.72f});
-  offsets.emplace_back(Vec3{0.0f, 0.0f, outer});
-  offsets.emplace_back(Vec3{to_local.x * outer, to_local.y * outer, 0.0f});
-  offsets.emplace_back(Vec3{to_local.x * outer, to_local.y * outer, -outer * 0.42f});
+  offsets->clear();
+  offsets->reserve(max_samples + 6);
+  offsets->emplace_back(Vec3{0.0f, 0.0f, -outer});
+  offsets->emplace_back(Vec3{outer * 0.38f, 0.0f, -outer * 0.72f});
+  offsets->emplace_back(Vec3{-outer * 0.38f, 0.0f, -outer * 0.72f});
+  offsets->emplace_back(Vec3{0.0f, 0.0f, outer});
+  offsets->emplace_back(Vec3{to_local.x * outer, to_local.y * outer, 0.0f});
+  offsets->emplace_back(Vec3{to_local.x * outer, to_local.y * outer, -outer * 0.42f});
 
   constexpr float golden_angle = 2.39996323f;
-  for (size_t index = 0; offsets.size() < max_samples && index < max_samples * 3; ++index) {
+  for (size_t index = 0; offsets->size() < max_samples && index < max_samples * 3; ++index) {
     const float t = static_cast<float>(index) + 0.5f;
     const float y = 1.0f - (2.0f * t / static_cast<float>(max_samples * 3));
     const float radial = std::sqrt(std::max(0.0f, 1.0f - (y * y)));
@@ -966,19 +982,36 @@ inline std::vector<Vec3> proj_aim_splash_sample_offsets(const Vec3& local_origin
       continue;
     }
 
-    offsets.emplace_back(offset);
+    offsets->emplace_back(offset);
   }
 
-  if (allow_seam_shot && offsets.size() < max_samples) {
-    offsets.emplace_back(Vec3{to_local.x * seam, to_local.y * seam, seam});
-    if (offsets.size() < max_samples) {
-      offsets.emplace_back(Vec3{to_local.x * seam, to_local.y * seam, -seam});
+  if (allow_seam_shot && offsets->size() < max_samples) {
+    offsets->emplace_back(Vec3{to_local.x * seam, to_local.y * seam, seam});
+    if (offsets->size() < max_samples) {
+      offsets->emplace_back(Vec3{to_local.x * seam, to_local.y * seam, -seam});
     }
   }
 
-  if (offsets.size() > max_samples) {
-    offsets.resize(max_samples);
+  if (offsets->size() > max_samples) {
+    offsets->resize(max_samples);
   }
+}
+
+inline std::vector<Vec3> proj_aim_splash_sample_offsets(const Vec3& local_origin,
+  const Vec3& target_origin,
+  float radius,
+  int sample_count,
+  bool allow_wall_splash,
+  bool allow_seam_shot) {
+  std::vector<Vec3> offsets{};
+  proj_aim_splash_sample_offsets(
+    local_origin,
+    target_origin,
+    radius,
+    sample_count,
+    allow_wall_splash,
+    allow_seam_shot,
+    &offsets);
 
   return offsets;
 }
@@ -1015,6 +1048,8 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
   const std::vector<proj_aim_path_sample> predicted_samples = proj_aim_limited_path_samples(target_path);
   const int splash_samples = std::clamp(config.aimbot.projectile_splash_samples, 4, 64);
   const std::vector<proj_aim_hitbox_sample> hitbox_samples = proj_aim_hitbox_samples(player, hitbox_mask);
+  std::vector<Vec3> sample_offsets{};
+  sample_offsets.reserve(static_cast<size_t>(splash_samples) + 6);
   std::vector<proj_aim_splash_history> splash_history{};
   if (config.aimbot.projectile_splash_debug) {
     splash_history.reserve(predicted_samples.size() * static_cast<size_t>(std::min(splash_samples, 12)));
@@ -1028,13 +1063,14 @@ inline aimbot_candidate proj_aim_find_splash_candidate(Player* localplayer,
       continue;
     }
 
-    const std::vector<Vec3> sample_offsets = proj_aim_splash_sample_offsets(
+    proj_aim_splash_sample_offsets(
       local_origin,
       predicted_origin,
       splash_radius,
       splash_samples,
       config.aimbot.projectile_wall_splash,
-      config.aimbot.projectile_seam_shot);
+      config.aimbot.projectile_seam_shot,
+      &sample_offsets);
     if (config.aimbot.projectile_splash_debug) {
       proj_aim_current_debug_stats.splash_offsets += static_cast<int>(sample_offsets.size());
     }
