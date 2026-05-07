@@ -468,6 +468,41 @@ class Bot extends EventEmitter {
         return true;
     }
 
+    botHomePath(host_path) {
+        const absolute_path = path.resolve(host_path);
+
+        if (absolute_path === this.home || path_is_inside(absolute_path, this.home))
+            return absolute_path;
+
+        if (absolute_path === USER.home || path_is_inside(absolute_path, USER.home))
+            return path.resolve(this.home, path.relative(USER.home, absolute_path));
+
+        return absolute_path;
+    }
+
+    chownBotPath(target_path) {
+        try {
+            if (fs.lchownSync)
+                fs.lchownSync(target_path, USER.uid, USER.uid);
+            else if (!fs.lstatSync(target_path).isSymbolicLink())
+                fs.chownSync(target_path, USER.uid, USER.uid);
+        } catch (error) { }
+    }
+
+    prepareBotSteamHome() {
+        ensure_directory_not_symlink(this.home);
+        this.chownBotPath(this.home);
+
+        this.steamPath = path.join(this.home, '.steam/steam');
+        this.steamApps = path.join(this.steamPath, 'steamapps');
+
+        fs.mkdirSync(this.steamPath, { recursive: true });
+        this.chownBotPath(path.join(this.home, '.steam'));
+        this.chownBotPath(this.steamPath);
+        this.setupSteamapps();
+        this.chownBotPath(this.steamApps);
+    }
+
     steamInstallCandidates() {
         return [
             path.join(this.home, '.steam/steam'),
@@ -623,15 +658,9 @@ class Bot extends EventEmitter {
     markSteamReady(preferredSteamPath) {
         const candidates = unique_paths([preferredSteamPath, ...this.steamInstallCandidates()]);
         const steam_path = candidates.find((candidate) => candidate && fs.existsSync(candidate)) || path.join(this.home, '.steam/steam');
-        const steamapps_path = path.join(steam_path, 'steamapps');
 
-        try {
-            this.steamPath = path.resolve(this.home, path.relative(USER.home, fs.realpathSync(steam_path)));
-            this.steamApps = path.resolve(this.home, path.relative(USER.home, fs.realpathSync(steamapps_path)));
-        } catch (error) {
-            this.steamPath = steam_path;
-            this.steamApps = steamapps_path;
-        }
+        this.steamPath = this.botHomePath(steam_path);
+        this.steamApps = path.join(this.steamPath, 'steamapps');
 
         this.tf2Path = process.env.TF2_PATH || path.join(this.steamApps, 'common/Team Fortress 2');
         this.setupSteamapps();
@@ -710,10 +739,7 @@ class Bot extends EventEmitter {
             return;
         }
 
-        if (!fs.existsSync(self.home)) {
-            fs.mkdirSync(self.home);
-            fs.chownSync(self.home, USER.uid, USER.uid);
-        }
+        self.prepareBotSteamHome();
         const xauthority_path = self.ensureVisibleXauthority();
 
         var steambin = this.nativeSteam ? "steam-native" : "steam";

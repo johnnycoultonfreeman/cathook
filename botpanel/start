@@ -65,36 +65,6 @@ fix_workspace_permissions() {
     \) -exec chmod 0755 {} +
 }
 
-cleanup_legacy_helper_directories() {
-    local old_path
-
-    for old_path in \
-        "/opt/CATHOOK_steamapps_upper" \
-        "/opt/CATHOOK_steamapps_work" \
-        "/opt/CATHOOK_steam_root" \
-        "/opt/.cathook/steamapps_upper" \
-        "/opt/.cathook/steamapps_work" \
-        "/opt/.cathook/steam_root"; do
-        if [ ! -e "$old_path" ]; then
-            continue
-        fi
-
-        if mountpoint -q "$old_path"; then
-            echo "Leaving mounted legacy helper directory in place: $old_path"
-            continue
-        fi
-
-        if run_as_root rmdir "$old_path" 2>/dev/null; then
-            echo "Removed empty legacy helper directory: $old_path"
-            continue
-        fi
-
-        echo "Legacy helper directory still exists because it is not empty: $old_path" >&2
-    done
-
-    run_as_root rmdir "/opt/.cathook" 2>/dev/null || true
-}
-
 ensure_mount_directory() {
     local target="$1"
 
@@ -837,7 +807,6 @@ fi
 
 install_missing_dependencies
 fix_workspace_permissions
-cleanup_legacy_helper_directories
 ensure_binaries
 install_runtime
 ensure_node_dependencies
