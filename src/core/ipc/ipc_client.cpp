@@ -19,6 +19,7 @@ V  o o  V  file: src/core/ipc/ipc_client.cpp
 #include "games/tf2/sdk/interfaces/client_state.hpp"
 #include "games/tf2/sdk/interfaces/engine.hpp"
 #include "games/tf2/sdk/interfaces/entity_list.hpp"
+#include "games/tf2/sdk/interfaces/game_event_manager.hpp"
 #include "games/tf2/sdk/interfaces/steam_runtime.hpp"
 
 #include <algorithm>
@@ -186,6 +187,13 @@ std::unordered_set<std::uint32_t> local_ipc_friends{};
 void reset_ingame_telemetry(user_data_s& data)
 {
   std::memset(&data.ingame, 0, sizeof(data.ingame));
+}
+
+void reset_game_telemetry_locked(user_data_s& data)
+{
+  data.connected = false;
+  reset_ingame_telemetry(data);
+  game_telemetry_ready_since = {};
 }
 
 [[nodiscard]] auto count_local_ipc_bots_on_server() -> int
@@ -622,6 +630,51 @@ void tick()
   }
 
   process_collected_commands(commands_to_process);
+}
+
+void on_game_event(GameEvent* event)
+{
+  if (event == nullptr || ipc_state == nullptr || !valid_local_peer_id())
+  {
+    return;
+  }
+
+  const char* event_name = event->get_name();
+  if (event_name == nullptr)
+  {
+    return;
+  }
+
+  const auto begins_connection = std::strcmp(event_name, "client_beginconnect") == 0;
+  const auto connected_to_map = std::strcmp(event_name, "client_connected") == 0 ||
+                                std::strcmp(event_name, "game_newmap") == 0;
+  const auto disconnected_from_map = std::strcmp(event_name, "client_disconnect") == 0;
+
+  if (!begins_connection && !connected_to_map && !disconnected_from_map)
+  {
+    return;
+  }
+
+  try_scoped_lock lock{ipc_state};
+  if (!lock.locked() || !valid_local_peer_id())
+  {
+    return;
+  }
+
+  auto& data = ipc_state->peer_user_data[local_peer_id];
+  const auto now = now_seconds();
+  reset_game_telemetry_locked(data);
+
+  if (connected_to_map)
+  {
+    data.ts_connected = now;
+    was_connected_to_server = true;
+  }
+  else if (disconnected_from_map)
+  {
+    data.ts_disconnected = now;
+    was_connected_to_server = false;
+  }
 }
 
 void shutdown()

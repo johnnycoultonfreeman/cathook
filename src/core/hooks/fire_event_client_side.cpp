@@ -15,6 +15,7 @@ V  o o  V  file: src/core/hooks/fire_event_client_side.cpp
 
 #include "games/tf2/sdk/interfaces/global_vars.hpp"
 
+#include "core/ipc/ipc_client.hpp"
 #include "core/math/math.hpp"
 #include "features/automation/medic_automation/medic_automation.hpp"
 #include "features/automation/misc/misc.hpp"
@@ -26,11 +27,22 @@ V  o o  V  file: src/core/hooks/fire_event_client_side.cpp
 bool (*fire_event_client_side_original)(void*, GameEvent*) = NULL;
 
 bool fire_event_client_side_hook(void* me, GameEvent* event) {
+  if (event == nullptr) {
+    return fire_event_client_side_original(me, event);
+  }
+
+  cat_ipc::client::on_game_event(event);
+
   navbot::controller().on_game_event(event);
   medic_automation::controller().on_game_event(event);
   automation::controller().on_game_event(event);
 
-  std::string event_name = std::string(event->get_name());
+  const char* raw_event_name = event->get_name();
+  if (raw_event_name == nullptr) {
+    return fire_event_client_side_original(me, event);
+  }
+
+  std::string event_name = std::string(raw_event_name);
   
   //print("2: %s\n", event->get_name());
 

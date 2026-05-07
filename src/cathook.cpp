@@ -784,12 +784,8 @@ bool initialize_module_runtime() {
   std::filesystem::create_directories(cathook::core::config_directory(), error);
   print("initialize_module_runtime initialize logger\n");
   cathook::core::initialize_logger(cathook::core::log_directory() / "cathook.log");
-#if defined(CATHOOK_TEXTMODE) && CATHOOK_TEXTMODE
-  print("initialize_module_runtime skip exception handler install in textmode\n");
-#else
   print("initialize_module_runtime install exception handler\n");
   cathook::core::exception_handler::install(cathook::core::log_directory() / "exception.log");
-#endif
   print("initialize_module_runtime initialize config store\n");
   cathook::core::initialize_config_store(cathook::core::root_directory());
   print("initialize_module_runtime load default config\n");

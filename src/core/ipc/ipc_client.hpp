@@ -14,6 +14,8 @@ V  o o  V  file: src/core/ipc/ipc_client.hpp
 
 #include <cstdint>
 
+class GameEvent;
+
 namespace cat_ipc::client
 {
 
@@ -21,6 +23,7 @@ void set_enabled(bool enabled);
 void set_auto_ignore_enabled(bool enabled);
 void start();
 void tick();
+void on_game_event(GameEvent* event);
 void shutdown();
 [[nodiscard]] bool connected();
 [[nodiscard]] int peer_id();
