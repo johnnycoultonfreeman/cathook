@@ -16,6 +16,7 @@ V  o o  V  file: src/core/hooks/fire_event_client_side.cpp
 #include "games/tf2/sdk/interfaces/global_vars.hpp"
 
 #include "core/math/math.hpp"
+#include "features/automation/medic_automation/medic_automation.hpp"
 #include "features/automation/misc/misc.hpp"
 #include "features/automation/navbot/navbot_controller.hpp"
 #include "features/visuals/hitmarker.hpp"
@@ -26,6 +27,7 @@ bool (*fire_event_client_side_original)(void*, GameEvent*) = NULL;
 
 bool fire_event_client_side_hook(void* me, GameEvent* event) {
   navbot::controller().on_game_event(event);
+  medic_automation::controller().on_game_event(event);
   automation::controller().on_game_event(event);
 
   std::string event_name = std::string(event->get_name());

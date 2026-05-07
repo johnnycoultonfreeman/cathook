@@ -1114,6 +1114,90 @@ public:
   bool is_minigun(void) {
     return this->get_weapon_id() == TF_WEAPON_MINIGUN;
   }
+
+  bool is_medigun() {
+    switch (get_def_id()) {
+    case Medic_s_MediGun:
+    case Medic_s_MediGunR:
+    case Medic_s_TheKritzkrieg:
+    case Medic_s_TheQuickFix:
+    case Medic_s_FestiveMediGun:
+    case Medic_s_SilverBotkillerMediGunMkI:
+    case Medic_s_GoldBotkillerMediGunMkI:
+    case Medic_s_RustBotkillerMediGunMkI:
+    case Medic_s_BloodBotkillerMediGunMkI:
+    case Medic_s_CarbonadoBotkillerMediGunMkI:
+    case Medic_s_DiamondBotkillerMediGunMkI:
+    case Medic_s_SilverBotkillerMediGunMkII:
+    case Medic_s_GoldBotkillerMediGunMkII:
+    case Medic_s_TheVaccinator:
+    case Medic_s_MaskedMender:
+    case Medic_s_WrappedReviver:
+    case Medic_s_ReclaimedReanimator:
+    case Medic_s_CivilServant:
+    case Medic_s_SparkofLife:
+    case Medic_s_Wildwood:
+    case Medic_s_FlowerPower:
+    case Medic_s_DressedToKill:
+    case Medic_s_HighRollers:
+    case Medic_s_CoffinNail:
+    case Medic_s_Blitzkrieg:
+    case Medic_s_Corsair:
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  bool is_vaccinator() {
+    return get_def_id() == Medic_s_TheVaccinator;
+  }
+
+  float medigun_charge_level() {
+    static const int offset = tf2_netvars::find_offset("DT_WeaponMedigun", {"m_flChargeLevel"});
+    if (offset <= 0 || !is_medigun()) {
+      return 0.0f;
+    }
+
+    return *reinterpret_cast<float*>(reinterpret_cast<uintptr_t>(this) + offset);
+  }
+
+  Entity* medigun_healing_target() {
+    static const int offset = tf2_netvars::find_offset("DT_WeaponMedigun", {"m_hHealingTarget"});
+    if (offset <= 0 || entity_list == nullptr || !is_medigun()) {
+      return nullptr;
+    }
+
+    const int handle = *reinterpret_cast<int*>(reinterpret_cast<uintptr_t>(this) + offset);
+    return entity_list->entity_from_handle(handle);
+  }
+
+  bool medigun_is_healing() {
+    static const int offset = tf2_netvars::find_offset("DT_WeaponMedigun", {"m_bHealing"});
+    if (offset <= 0 || !is_medigun()) {
+      return false;
+    }
+
+    return *reinterpret_cast<bool*>(reinterpret_cast<uintptr_t>(this) + offset);
+  }
+
+  bool medigun_is_releasing_charge() {
+    static const int offset = tf2_netvars::find_offset("DT_WeaponMedigun", {"m_bChargeRelease"});
+    if (offset <= 0 || !is_medigun()) {
+      return false;
+    }
+
+    return *reinterpret_cast<bool*>(reinterpret_cast<uintptr_t>(this) + offset);
+  }
+
+  int vaccinator_resist_type() {
+    static const int offset = tf2_netvars::find_offset("DT_WeaponMedigun", {"m_nChargeResistType"});
+    if (offset <= 0 || !is_vaccinator()) {
+      return 0;
+    }
+
+    return *reinterpret_cast<int*>(reinterpret_cast<uintptr_t>(this) + offset);
+  }
   
   bool can_ambassador_headshot() {
     Entity* owner = this->get_owner_entity();

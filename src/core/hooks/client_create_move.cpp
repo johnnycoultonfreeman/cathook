@@ -17,6 +17,7 @@ V  o o  V  file: src/core/hooks/client_create_move.cpp
 
 #include "core/entity_cache.hpp"
 #include "core/detach.hpp"
+#include "features/automation/medic_automation/medic_automation.hpp"
 #include "features/combat/anti_aim/anti_aim.hpp"
 #include "features/combat/random_crits/random_crits.hpp"
 #include "features/combat/tickbase/tickbase.hpp"
@@ -102,7 +103,9 @@ void client_create_move_hook(void* me, int sequence_number, float input_sample_f
     return;
   }
 
-  random_crits::run(user_cmd);
+  if (!medic_automation::controller().should_suppress_random_crits()) {
+    random_crits::run(user_cmd);
+  }
   tickbase::on_create_move(user_cmd);
   anti_aim::on_create_move(user_cmd);
   update_verified_user_cmd(sequence_number, user_cmd);

@@ -418,6 +418,12 @@ inline void register_builtin_targets() {
   register_target("misc.automation.navbot_look_at_path", "Look at path", &config.misc.automation.navbot_look_at_path);
   register_target("misc.automation.navbot_look_at_path_speed", "Navbot look speed", &config.misc.automation.navbot_look_at_path_speed);
   register_target("misc.automation.navbot_crumb_blacklist_seconds", "Crumb blacklist", &config.misc.automation.navbot_crumb_blacklist_seconds);
+  register_target("misc.automation.medic_autoheal", "Medic autoheal", &config.misc.automation.medic_autoheal);
+  register_target("misc.automation.medic_autovacc", "Medic autovacc", &config.misc.automation.medic_autovacc);
+  register_target("misc.automation.medic_autouber", "Medic autouber", &config.misc.automation.medic_autouber);
+  register_target("misc.automation.medic_auto_crossbow", "Medic Crossbow", &config.misc.automation.medic_auto_crossbow);
+  register_target("misc.automation.medic_heal_targets_mask", "Medic heal targets", reinterpret_cast<int*>(&config.misc.automation.medic_heal_targets_mask));
+  register_target("misc.automation.medic_heal_only", "Medic heal only", &config.misc.automation.medic_heal_only);
   register_target("misc.automation.auto_class_select", "Auto class select", &config.misc.automation.auto_class_select);
   register_target("misc.automation.class_selected", "Preferred class", reinterpret_cast<int*>(&config.misc.automation.class_selected));
   register_target("misc.automation.anti_afk", "Anti AFK", &config.misc.automation.anti_afk);

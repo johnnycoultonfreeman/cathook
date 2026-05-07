@@ -75,7 +75,8 @@ enum class goal_type : uint8_t
   engineer_build,
   engineer_maintain,
   reload_weapons,
-  roam
+  roam,
+  heal_follow
 };
 
 enum class crumb_kind : uint8_t
@@ -176,6 +177,7 @@ struct goal_candidate
   float score = 0.0f;
   Vec3 destination{};
   nav_area_id destination_area{};
+  int entity_index = 0;
 };
 
 enum class follower_failure_reason : uint8_t

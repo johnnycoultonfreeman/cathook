@@ -57,6 +57,8 @@ const char* goal_type_name(goal_type type)
       return "engineer_maintain";
     case goal_type::reload_weapons:
       return "reload_weapons";
+    case goal_type::heal_follow:
+      return "heal_follow";
     case goal_type::roam:
     default:
       return "roam";

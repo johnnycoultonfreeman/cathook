@@ -27,6 +27,7 @@ V  o o  V  file: src/core/hooks/client_mode_create_move.cpp
 #include "features/combat/random_crits/random_crits.cpp"
 #include "features/movement/bhop/bhop.cpp"
 #include "features/movement/engine_prediction/engine_prediction.cpp"
+#include "features/automation/medic_automation/medic_automation.hpp"
 #include "features/automation/misc/misc.hpp"
 #include "features/automation/navbot/navbot_controller.hpp"
 #include "features/visuals/esp/esp.hpp"
@@ -121,9 +122,13 @@ static bool run_move_features(user_cmd* user_cmd) {
 
   force_aimbot_autoreload_convar();
 
+  medic_automation::controller().on_pre_navbot_create_move(user_cmd);
   bhop(user_cmd);
   navbot::controller().on_create_move(user_cmd);
-  const bool suppress_aimbot = navbot::controller().should_suppress_aimbot();
+  medic_automation::controller().on_post_navbot_create_move(user_cmd);
+  const bool suppress_aimbot_for_reload = navbot::controller().should_suppress_aimbot();
+  const bool suppress_aimbot_for_medic = medic_automation::controller().should_suppress_aimbot();
+  const bool suppress_aimbot = suppress_aimbot_for_reload || suppress_aimbot_for_medic;
 
   const bool menu_movement_blocked = should_block_menu_movement();
   if (menu_movement_blocked) {
@@ -134,7 +139,7 @@ static bool run_move_features(user_cmd* user_cmd) {
   const float corrected_side_move = user_cmd->sidemove;
   const float corrected_forward_move = user_cmd->forwardmove;
 
-  if (suppress_aimbot) {
+  if (suppress_aimbot_for_reload) {
     target_player = nullptr;
     target_entity = nullptr;
     clear_aimbot_preference();
@@ -142,6 +147,12 @@ static bool run_move_features(user_cmd* user_cmd) {
     reset_aimbot_input_history();
     user_cmd->buttons &= ~(IN_ATTACK | IN_ATTACK2 | IN_ATTACK3);
     user_cmd->buttons |= IN_RELOAD;
+  } else if (suppress_aimbot_for_medic) {
+    target_player = nullptr;
+    target_entity = nullptr;
+    clear_aimbot_preference();
+    reset_autoscope_scope_state();
+    reset_aimbot_input_history();
   } else if (aimbot_should_clear_autoreload()) {
     user_cmd->buttons &= ~IN_RELOAD;
   }

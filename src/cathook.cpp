@@ -115,6 +115,7 @@ V  o o  V  file: src/cathook.cpp
 #include "features/automation/navbot/navbot_hazards.cpp"
 #include "features/automation/navbot/navbot_path.cpp"
 #include "features/automation/navbot/navbot_jobs.cpp"
+#include "features/automation/medic_automation/medic_automation.cpp"
 #include "features/automation/navbot/navbot_goals.cpp"
 #include "features/automation/navbot/navbot_follow.cpp"
 #include "features/automation/navbot/navbot_debug.cpp"

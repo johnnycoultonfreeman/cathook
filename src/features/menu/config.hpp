@@ -441,6 +441,13 @@ struct Misc {
   } exploits;
   
   struct Automation {
+    enum medic_heal_target_flags : uint32_t {
+      medic_heal_target_friends = 1u << 0,
+      medic_heal_target_ignored = 1u << 1,
+      medic_heal_target_ipc_bots = 1u << 2,
+      medic_heal_target_default = medic_heal_target_friends | medic_heal_target_ignored | medic_heal_target_ipc_bots
+    };
+
     enum class chatspam_source {
       OFF = 0,
       CATHOOK,
@@ -533,6 +540,12 @@ struct Misc {
     bool auto_mvm_ready_up = false;
     bool mvm_buybot = false;
     int mvm_buybot_max_cash = 0;
+    bool medic_autoheal = false;
+    bool medic_autovacc = false;
+    bool medic_autouber = false;
+    bool medic_auto_crossbow = false;
+    uint32_t medic_heal_targets_mask = medic_heal_target_default;
+    bool medic_heal_only = false;
     bool auto_queue = false;
     bool auto_requeue = false;
     bool requeue_on_kick = false;

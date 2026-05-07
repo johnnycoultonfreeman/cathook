@@ -20,6 +20,7 @@ V  o o  V  file: src/features/automation/navbot/navbot_controller.cpp
 
 #include "core/entity_cache.hpp"
 
+#include "features/automation/medic_automation/medic_automation.hpp"
 #include "features/combat/aimbot/aimbot.hpp"
 #include "features/menu/config.hpp"
 
@@ -94,6 +95,10 @@ float destination_reach_distance_for_goal(goal_type type)
   if (type == goal_type::reload_weapons)
   {
     return 90.0f;
+  }
+  if (type == goal_type::heal_follow)
+  {
+    return 170.0f;
   }
   if (type == goal_type::defend_payload)
   {
@@ -529,6 +534,13 @@ navbot_weapon_slot choose_navbot_weapon_slot(Player* localplayer, const navbot_g
     }
   }
 
+  if (goal == goal_type::heal_follow && localplayer->get_tf_class() == tf_class::MEDIC)
+  {
+    return medic_automation::controller().wants_crossbow()
+      ? navbot_weapon_slot::primary
+      : navbot_weapon_slot::secondary;
+  }
+
   auto* enemy = choose_navbot_enemy(localplayer);
   auto desired_slot = goal_is_combat(goal)
     ? choose_combat_slot(localplayer, goal, enemy)
@@ -608,11 +620,19 @@ bool same_goal_destination(const navbot_goal_state& left, const navbot_goal_stat
   {
     return false;
   }
+  if (left.goal.entity_index != right.goal.entity_index)
+  {
+    return false;
+  }
 
   auto shift_limit = goal_is_supply(left.goal.type) ? 24.0f : 96.0f;
   if (goal_is_payload(left.goal.type))
   {
     shift_limit = 40.0f;
+  }
+  if (left.goal.type == goal_type::heal_follow)
+  {
+    shift_limit = 72.0f;
   }
 
   return goal_destination_shift_sq(left, right) <= shift_limit * shift_limit;
@@ -627,6 +647,19 @@ bool should_replace_goal(const navbot_goal_state& active_goal, const navbot_goal
   if (!active_goal.valid)
   {
     return true;
+  }
+
+  if (active_goal.goal.type == goal_type::heal_follow)
+  {
+    auto* heal_target = medic_automation::controller().heal_target();
+    if (heal_target == nullptr || heal_target->is_dormant() || !heal_target->is_alive())
+    {
+      return true;
+    }
+    if (next_goal.goal.type != goal_type::heal_follow || next_goal.goal.entity_index != active_goal.goal.entity_index)
+    {
+      return true;
+    }
   }
 
   if (has_path && goal_is_supply(active_goal.goal.type))
@@ -936,6 +969,26 @@ void navbot_controller::on_create_move(user_cmd* user_cmd)
     follower_.clear();
     active_path_ = path_result{};
     active_goal_ = {};
+  }
+
+  if (active_goal_.valid && active_goal_.goal.type == goal_type::heal_follow)
+  {
+    auto* heal_target = medic_automation::controller().heal_target();
+    if (heal_target == nullptr
+      || heal_target->is_dormant()
+      || !heal_target->is_alive()
+      || heal_target->get_team() != localplayer->get_team()
+      || heal_target->get_index() != active_goal_.goal.entity_index)
+    {
+      jobs_.cancel_generation(current_generation_id_);
+      ++current_generation_id_;
+      pending_job_ = {};
+      next_goal_refresh_time_ = 0.0f;
+      next_path_request_time_ = 0.0f;
+      follower_.clear();
+      active_path_ = path_result{};
+      active_goal_ = {};
+    }
   }
 
   const auto has_active_path_or_pending_request = follower_.has_path() || pending_job_.generation_id == current_generation_id_;

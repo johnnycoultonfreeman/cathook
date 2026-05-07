@@ -20,6 +20,7 @@ V  o o  V  file: src/features/automation/navbot/navbot_goals.cpp
 #include "core/entity_cache.hpp"
 #include "core/math/math.hpp"
 
+#include "features/automation/medic_automation/medic_automation.hpp"
 #include "features/menu/config.hpp"
 
 #include "games/tf2/sdk/entities/capture_flag.hpp"
@@ -66,6 +67,13 @@ goal_candidate make_candidate(goal_type type, float score, const Vec3& destinati
   candidate.score = score;
   candidate.destination = destination;
   candidate.destination_area = destination_area;
+  return candidate;
+}
+
+goal_candidate make_entity_candidate(goal_type type, float score, const Vec3& destination, nav_area_id destination_area, int entity_index)
+{
+  auto candidate = make_candidate(type, score, destination, destination_area);
+  candidate.entity_index = entity_index;
   return candidate;
 }
 
@@ -796,6 +804,41 @@ goal_candidate choose_enemy_goal(const navbot_mesh& mesh, Player* localplayer, f
   return best;
 }
 
+goal_candidate choose_heal_follow_goal(const navbot_mesh& mesh, Player* localplayer)
+{
+  goal_candidate best{};
+  best.score = -1.0f;
+  if (localplayer == nullptr || localplayer->get_tf_class() != tf_class::MEDIC)
+  {
+    return best;
+  }
+
+  auto* target = medic_automation::controller().heal_target();
+  if (target == nullptr || target->is_dormant() || !target->is_alive() || target->get_team() != localplayer->get_team())
+  {
+    return best;
+  }
+
+  auto destination = target->get_origin();
+  auto area_id = mesh.find_closest_area(destination);
+  if (!area_id.valid())
+  {
+    return best;
+  }
+
+  auto score = 88.0f;
+  if (target->get_max_health() > 0 && target->get_health() < target->get_max_health())
+  {
+    score += (1.0f - std::clamp(static_cast<float>(target->get_health()) / static_cast<float>(target->get_max_health()), 0.0f, 1.0f)) * 18.0f;
+  }
+  if (medic_automation::controller().wants_crossbow())
+  {
+    score += 4.0f;
+  }
+
+  return make_entity_candidate(goal_type::heal_follow, score, destination, area_id, target->get_index());
+}
+
 } // namespace
 
 void navbot_goals::reset_flag_home_cache()
@@ -1074,6 +1117,11 @@ navbot_goal_state navbot_goals::select_goal(const navbot_mesh& mesh, Player* loc
   if (goal_enabled(goal_type::capture_objective))
   {
     choose_best(best, choose_control_point_goal(mesh, localplayer));
+  }
+
+  if (goal_enabled(goal_type::heal_follow))
+  {
+    choose_best(best, choose_heal_follow_goal(mesh, localplayer));
   }
 
   auto have_priority_objective = goal_is_objective(best.type) && best.score > best_before_objectives.score;

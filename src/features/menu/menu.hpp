@@ -1676,7 +1676,8 @@ static void draw_navbot_content() {
     "Sentry snipe",
     "Engineer build",
     "Engineer maintain",
-    "Reload weapons"
+    "Reload weapons",
+    "Heal follow"
   };
   const uint32_t navbot_job_bits[] = {
     1u << 0,
@@ -1692,7 +1693,8 @@ static void draw_navbot_content() {
     1u << 10,
     1u << 11,
     1u << 12,
-    1u << 13
+    1u << 13,
+    1u << 15
   };
 
   cat_menu::begin_flow_layout("navbot_layout", 2);
@@ -1708,6 +1710,30 @@ static void draw_navbot_content() {
     cat_menu::slider_float("Crumb blacklist", &config.misc.automation.navbot_crumb_blacklist_seconds, 0.0f, 60.0f, "%.0f s");
     cat_menu::multi_select_combo("Exclude jobs", &config.misc.automation.navbot_excluded_jobs_mask, navbot_job_items, navbot_job_bits, IM_ARRAYSIZE(navbot_job_items));
     cat_menu::checkbox("Debug text", &config.misc.automation.navbot_debug_text);
+  });
+  cat_menu::end_flow_layout();
+}
+
+static void draw_medic_content() {
+  const char* heal_target_items[] = {
+    "Friends",
+    "Ignored",
+    "IPC bots"
+  };
+  const uint32_t heal_target_bits[] = {
+    Misc::Automation::medic_heal_target_friends,
+    Misc::Automation::medic_heal_target_ignored,
+    Misc::Automation::medic_heal_target_ipc_bots
+  };
+
+  cat_menu::begin_flow_layout("medic_layout", 2);
+  cat_menu::flow_panel("Medic", 0, 184.0f, [&]() {
+    cat_menu::checkbox("Autoheal", &config.misc.automation.medic_autoheal);
+    cat_menu::checkbox("Autovacc", &config.misc.automation.medic_autovacc);
+    cat_menu::checkbox("Autouber", &config.misc.automation.medic_autouber);
+    cat_menu::checkbox("Auto Crossbow", &config.misc.automation.medic_auto_crossbow);
+    cat_menu::multi_select_combo("Heal targets", &config.misc.automation.medic_heal_targets_mask, heal_target_items, heal_target_bits, IM_ARRAYSIZE(heal_target_items));
+    cat_menu::checkbox("Heal only", &config.misc.automation.medic_heal_only);
   });
   cat_menu::end_flow_layout();
 }
@@ -2053,6 +2079,7 @@ static void draw_automation_tab() {
     automation_page_utilities,
     automation_page_autoitem,
     automation_page_chat,
+    automation_page_medic,
     automation_page_navbot,
     automation_page_ipc
   };
@@ -2074,6 +2101,10 @@ static void draw_automation_tab() {
   ImGui::SameLine(0.0f, 0.0f);
   if (cat_menu::subtab_button("Chat", automation_subtab == automation_page_chat)) {
     automation_subtab = automation_page_chat;
+  }
+  ImGui::SameLine(0.0f, 0.0f);
+  if (cat_menu::subtab_button("Medic", automation_subtab == automation_page_medic)) {
+    automation_subtab = automation_page_medic;
   }
   ImGui::SameLine(0.0f, 0.0f);
   if (cat_menu::subtab_button("NavBot", automation_subtab == automation_page_navbot)) {
@@ -2098,6 +2129,9 @@ static void draw_automation_tab() {
       break;
     case automation_page_chat:
       draw_chat_content();
+      break;
+    case automation_page_medic:
+      draw_medic_content();
       break;
     case automation_page_navbot:
       draw_navbot_content();
