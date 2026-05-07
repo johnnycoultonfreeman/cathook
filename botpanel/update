@@ -146,6 +146,15 @@ update_origin_url() {
     fi
 }
 
+discard_local_tracked_changes() {
+    if [ -z "$(git -C "$repo_root" status --porcelain --untracked-files=no)" ]; then
+        return
+    fi
+
+    echo "Discarding local tracked changes before updating..."
+    git -C "$repo_root" reset --hard
+}
+
 update_repo() {
     local old_script=""
     local new_script=""
@@ -158,6 +167,7 @@ update_repo() {
     if git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         old_script="$(git -C "$repo_root" rev-parse HEAD:botpanel/update 2>/dev/null || true)"
         update_origin_url
+        discard_local_tracked_changes
         git -C "$repo_root" pull --ff-only
         git -C "$repo_root" submodule update --init --recursive
         new_script="$(git -C "$repo_root" rev-parse HEAD:botpanel/update 2>/dev/null || true)"
